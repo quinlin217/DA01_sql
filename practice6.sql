@@ -65,7 +65,37 @@ where b.* is null
 order by a.page_id
 
 -- ex5:
+with new_table as
+(select 
+  user_id,
+  count(*),
+  extract(month from event_date) as month
+from user_actions 
+where extract(month from event_date)=6 and extract(year from event_date)=2022
+group by user_id, extract(month from event_date)
+union all 
+select 
+  user_id,
+  count(*),
+  extract(month from event_date) as month
+from user_actions 
+where extract(month from event_date)=7 and extract(year from event_date)=2022
+group by user_id,extract(month from event_date)),
+count as
+(select 
+  user_id,
+  count(*) as count,
+  max(month) as month
+from new_table
+group by user_id
+having count(*)>=2)
 
+select 
+  month, 
+  count(*) as monthly_active_users
+from count
+group by month
+  
 -- ex6:
 select 
     date_format(trans_date, '%Y-%m') as month,
@@ -101,7 +131,12 @@ group by customer_id
 having count( distinct product_key) >= (select count(product_key) from product)
 
 -- ex9: 
-  
+select 
+    a.employee_id
+from employees as a
+left join employees as b on a.manager_id=b.employee_id 
+where a.salary<30000 and b.employee_id is null and a.manager_id is not null
+order by a.employee_id 
 
 -- ex10:
 with count_table as
@@ -150,3 +185,23 @@ select title as results
 from highest_avg;
 
 -- ex12: 
+with count_friends as
+(select 
+    requester_id as id,
+    count(*) as count
+from RequestAccepted
+group by requester_id
+union all 
+select 
+    accepter_id as id,
+    count(*) as count
+from RequestAccepted
+group by accepter_id)
+
+select 
+    id, 
+    sum(count) as num
+from count_friends
+group by id
+order by num desc
+limit 1
