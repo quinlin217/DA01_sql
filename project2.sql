@@ -153,3 +153,53 @@ select
   else 100 || '%' end as order_growth
 from cte
 order by product_category;
+
+-- 2) Tạo retention cohort analysis.
+with orders_index as
+(select
+  user_id, 
+  sale_price, 
+  format_timestamp('%Y-%m-01', first_purchase_date) as cohort_date,
+  created_at,
+  (extract(year from created_at)-extract(year from first_purchase_date))*12
+	+ extract(month from created_at)-extract(month from first_purchase_date) +1 as index
+from
+(select 
+  b.user_id,
+  min(b.created_at) over(partition by b.user_id) as first_purchase_date,
+  b.sale_price,
+  b.created_at
+from bigquery-public-data.thelook_ecommerce.products as a
+join bigquery-public-data.thelook_ecommerce.order_items as b
+on a.id = b.product_id
+where b.status='Complete'
+order by b.user_id) as new_table),
+
+cte as
+(select 
+  cohort_date, 
+  index,
+  round(sum(sale_price),2) as tpv
+from orders_index
+group by cohort_date, index),
+
+orders_cohort as
+(select 
+  cohort_date,
+	sum(case when index=1 then tpv else 0 end) as m1,
+	sum(case when index=2 then tpv else 0 end) as m2,
+	sum(case when index=3 then tpv else 0 end) as m3,
+	sum(case when index=4 then tpv else 0 end) as m4
+from cte
+group by cohort_date
+order by cohort_date)
+
+select 
+    cohort_date,
+    round(100 * m1 / m1, 2) || '%' as m1,
+    round(100 * m2 / m1, 2) || '%' as m2,
+    round(100 * m3 / m1, 2) || '%' as m3,
+    round(100 * m4 / m1, 2) || '%' as m4
+  from orders_cohort
+
+-- https://docs.google.com/spreadsheets/d/1H8yioSDe9jOF3raCRylGqfIS8D9Eiw5WDz50Qz_eBPg/edit?usp=sharing
