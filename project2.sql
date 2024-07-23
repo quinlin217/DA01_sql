@@ -120,3 +120,36 @@ where format_timestamp('%Y/%m/%d', b.delivered_at) between '2022/04/15' and '202
 group by format_timestamp('%Y/%m/%d', b.delivered_at),
   a.category
 order by date 
+
+/*1) Giả sử team của bạn đang cần dựng dashboard và có yêu cầu xử lý dữ liệu trước khi kết nối với BI tool. 
+Sau khi bàn bạc, team của bạn quyết định các metric cần thiết cho dashboard và cần phải trích xuất dữ liệu từ database 
+để ra được 1 dataset như mô tả Yêu cầu dataset.
+Hãy sử dụng câu lệnh SQL để tạo ra 1 dataset như mong muốn và lưu dataset đó vào VIEW đặt tên là vw_ecommerce_analyst
+*/
+with cte as
+(select 
+  format_timestamp('%Y-%m', b.created_at) as month,
+  format_timestamp('%Y', b.created_at) as year,
+  c.category as product_category,
+  round(sum(case when b.status='Complete' then a.sale_price else 0 end),2) as TPV,
+  count(a.order_id) as TPO,
+  round(sum(case when b.status='Complete' then c.cost else 0 end),2) as total_cost
+from bigquery-public-data.thelook_ecommerce.order_items as a
+join bigquery-public-data.thelook_ecommerce.orders as b on a.order_id=b.order_id
+join bigquery-public-data.thelook_ecommerce.products as c on a.product_id=c.id
+group by 
+  format_timestamp('%Y-%m', b.created_at),
+  format_timestamp('%Y', b.created_at),
+  c.category)
+
+select 
+  *,
+  round(tpv-total_cost,2) as total_profit,
+  case when total_cost<>0 then round((tpv-total_cost)/total_cost,2)
+  else 0 end as profit_to_cost_ratio,
+  case when tpv<> 0 then round(100.0*(lead(tpv) over(partition by product_category order by month)-tpv)/tpv,2) || '%'
+  else 100 || '%' end as revenue_growth,
+  case when tpo<> 0 then round(100.0*(lead(tpo) over(partition by product_category order by month)-tpo)/tpo,2) || '%'
+  else 100 || '%' end as order_growth
+from cte
+order by product_category;
